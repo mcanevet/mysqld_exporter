@@ -14,6 +14,7 @@
 package config
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
@@ -26,6 +27,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 
+	awsConfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/go-sql-driver/mysql"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -72,6 +75,7 @@ type MySqlConfig struct {
 	SslKey                string `ini:"ssl-key"`
 	TlsInsecureSkipVerify bool   `ini:"ssl-skip-verfication"`
 	Tls                   string `ini:"tls"`
+	AWSRegion             string `ini:"aws_region"`
 }
 
 type MySqlConfigHandler struct {
@@ -199,6 +203,21 @@ func (m MySqlConfig) FormDSN(target string) (string, error) {
 			return "", fmt.Errorf("failed to parse target: %s", err)
 		}
 		config.Addr = target
+
+		if m.AWSRegion != "" {
+			cfg, err := awsConfig.LoadDefaultConfig(context.TODO())
+			if err != nil {
+				panic("configuration error: " + err.Error())
+			}
+
+			authenticationToken, err := auth.BuildAuthToken(
+				context.TODO(), target, m.AWSRegion, config.User, cfg.Credentials)
+			if err != nil {
+				panic("failed to create authentication token: " + err.Error())
+			}
+
+			config.Passwd = authenticationToken
+		}
 	}
 
 	if m.TlsInsecureSkipVerify {
